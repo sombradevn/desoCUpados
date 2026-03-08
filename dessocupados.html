@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>desoCUpados - QG</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: #fff; margin: 0; display: flex; height: 100vh; overflow: hidden; }
+        #main-layout { display: none; width: 100%; display: flex; }
+        
+        /* CHAT */
+        #chat-area { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #2f3336; }
+        #messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+        
+        .msg { padding: 10px 15px; border-radius: 18px; background: #202327; max-width: 75%; align-self: flex-start; }
+        .minha { background: #1d9bf0; align-self: flex-end; }
+        .vulgo { font-size: 11px; color: #71767b; font-weight: bold; display: block; margin-bottom: 4px; }
+
+        /* SIDEBAR LARGA */
+        #sidebar { width: 340px; padding: 20px; background: #000; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+        .card { background: #16181c; border: 1px solid #2f3336; padding: 15px; border-radius: 16px; }
+        
+        .regras { font-size: 14px; line-height: 1.5; color: #fff; }
+        .regras b { color: #f4212e; }
+
+        /* BARRINHA DE BAIXO */
+        .bar { padding: 15px; border-top: 1px solid #2f3336; display: flex; gap: 10px; align-items: center; }
+        #txt { flex: 1; background: #202327; border: none; color: #fff; padding: 12px; border-radius: 20px; outline: none; }
+        .btn { background: none; border: none; font-size: 24px; cursor: pointer; color: #1d9bf0; }
+        
+        #btn-voz.ativo { color: #f4212e; transform: scale(1.2); }
+
+        .modal { position: fixed; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        img, video { max-width: 100%; border-radius: 10px; margin-top: 5px; }
+        audio { width: 100%; margin-top: 5px; filter: invert(1); }
+    </style>
+</head>
+<body>
+
+    <div id="modal-nome" class="modal">
+        <div style="text-align: center; background: #16181c; padding: 30px; border-radius: 20px; border: 1px solid #2f3336;">
+            <h2>Vulgo na Tropa</h2>
+            <input type="text" id="nick" placeholder="Seu nome..." style="padding:10px; border-radius:8px; border:1px solid #333; background:#000; color:#fff; width:200px;"><br><br>
+            <button onclick="entrar()" style="padding:10px 30px; background:#fff; color:#000; border-radius:20px; font-weight:bold; cursor:pointer;">ENTRAR</button>
+        </div>
+    </div>
+
+    <div id="main-layout">
+        <div id="chat-area">
+            <div style="padding:15px; border-bottom:1px solid #2f3336; font-weight:bold; font-size:1.4rem; color:#1d9bf0">desoCUpados</div>
+            <div id="messages"></div>
+            <div class="bar">
+                <button class="btn" onclick="document.getElementById('file-in').click()">🖼️</button>
+                <button class="btn" id="btn-voz">🎤</button>
+                <input type="text" id="txt" placeholder="Mandar no grupo...">
+                <button class="btn" onclick="enviar()">🚀</button>
+            </div>
+            <input type="file" id="file-in" style="display:none" accept="image/*,video/*">
+        </div>
+
+        <div id="sidebar">
+            <div class="card">
+                <h3 style="color:#f4212e; margin-top:0;">📜 11 Mandamentos</h3>
+                <div class="regras">
+                    <b>1.</b> Kitou/Ban = Lista Negra.<br>
+                    <b>2.</b> Sem pornografia pesada.<br>
+                    <b>3.</b> Talaricagem proibida.<br>
+                    <b>4.</b> Briga = Batalha de Rap (4v).<br>
+                    <b>5.</b> Respeite as diferenças.<br>
+                    <b>6.</b> Família é sagrada.<br>
+                    <b>7.</b> Sem spam de figurinha.<br>
+                    <b>8.</b> No máximo 2 ligações.<br>
+                    <b>9.</b> União total da tropa.<br>
+                    <b>10.</b> Irmã do Juan é sagrada.<br>
+                    <b>11.</b> Adm sem autorização = BAN.
+                </div>
+            </div>
+            <div class="card">
+                <h3 style="margin-top:0">👤 Online</h3>
+                <div id="lista"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        var socket = io();
+        var meuNome = "";
+        var mediaRecorder;
+        var audioChunks = [];
+
+        function entrar() {
+            var n = document.getElementById('nick').value.trim();
+            if(!n) return;
+            meuNome = n;
+            document.getElementById('modal-nome').style.display = 'none';
+            document.getElementById('main-layout').style.display = 'flex';
+            socket.emit('registrar-nome', meuNome);
+        }
+
+        // --- ÁUDIO (SEU MODELO QUE FUNCIONOU) ---
+        const btnVoz = document.getElementById('btn-voz');
+        btnVoz.onmousedown = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.onloadend = () => socket.emit('chat message', { u: meuNome, type: 'audio', c: reader.result });
+                    reader.readAsDataURL(blob);
+                    stream.getTracks().forEach(t => t.stop());
+                };
+                mediaRecorder.start();
+                btnVoz.classList.add('ativo');
+            } catch(e) { alert("Microfone bloqueado! Use HTTPS."); }
+        };
+
+        btnVoz.onmouseup = () => {
+            if(mediaRecorder) {
+                mediaRecorder.stop();
+                btnVoz.classList.remove('ativo');
+            }
+        };
+
+        // --- ENVIO ---
+        function enviar() {
+            var t = document.getElementById('txt');
+            if(t.value.trim()) {
+                socket.emit('chat message', { u: meuNome, type: 'text', c: t.value });
+                t.value = "";
+            }
+        }
+
+        document.getElementById('file-in').onchange = function(e) {
+            var file = e.target.files[0];
+            var reader = new FileReader();
+            reader.onload = ev => {
+                var tipo = file.type.split('/')[0];
+                socket.emit('chat message', { u: meuNome, type: tipo, c: ev.target.result });
+            };
+            reader.readAsDataURL(file);
+        };
+
+        // --- RECEBIMENTO ---
+        function renderizar(d) {
+            var m = document.getElementById('messages');
+            var div = document.createElement('div');
+            div.className = "msg " + (d.u == meuNome ? "minha" : "");
+            var html = `<small class="vulgo">@${d.u}</small>`;
+            
+            if(d.type == 'text') html += d.c;
+            if(d.type == 'image') html += `<img src="${d.c}">`;
+            if(d.type == 'video') html += `<video src="${d.c}" controls></video>`;
+            if(d.type == 'audio') html += `<audio src="${d.c}" controls></audio>`;
+            
+            div.innerHTML = html;
+            m.appendChild(div);
+            m.scrollTop = m.scrollHeight;
+            if(d.type == 'audio' && d.u !== meuNome) new Audio(d.c).play().catch(e => {});
+        }
+
+        socket.on('chat message', d => renderizar(d));
+        socket.on('historico', h => h.forEach(d => renderizar(d)));
+        socket.on('lista-online', l => {
+            var div = document.getElementById('lista');
+            div.innerHTML = "";
+            l.forEach(u => div.innerHTML += `<div style="color:#00ff00">● ${u}</div>`);
+        });
+
+        document.getElementById('txt').onkeypress = e => { if(e.keyCode==13) enviar(); };
+    </script>
+</body>
+</html>
